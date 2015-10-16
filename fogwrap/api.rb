@@ -9,15 +9,26 @@ require 'fog'
 
 class Servers
   extend Jimson::Handler
-  
+
   def create(endpoint, args)
     ep = get_endpoint(endpoint)
-    ep.servers.create(args)
+    ep.servers.create(fix_hash(args))
   end
 
   def list(endpoint)
     ep = get_endpoint(endpoint)
     ep.servers
+  end
+
+  def get(endpoint, id)
+    ep = get_endpoint(endpoint)
+    ep.servers.get(id)
+  end
+
+  def delete(endpoint,id)
+    ep = get_endpoint(endpoint)
+    server = ep.servers.get(id)
+    server.destroy
   end
 
   private
