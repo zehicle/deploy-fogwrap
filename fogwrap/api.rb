@@ -47,5 +47,5 @@ end
 # Fire it up, boys
 router = Jimson::Router.new
 router.namespace('servers',Servers.new)
-server = Jimson::Server.new(router, port: 3000, server: 'puma')
+server = Jimson::Server.new(router, port: 3030, server: 'puma')
 server.start
