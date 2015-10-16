@@ -3,37 +3,34 @@
 require 'json'
 require 'jimson' # This is a JSONRPC 2.0 service
 require 'puma'
-
 # We wrap the relevant bits of Fog to get our work done.
 require 'fog'
-require 'monitor'
 # require 'diplomat'
 
-ep_lock = Monitor.new
-
-class API
+class Servers
   extend Jimson::Handler
-
-  def create_server(endpoint, args)
+  
+  def create(endpoint, args)
     ep = get_endpoint(endpoint)
     ep.servers.create(args)
   end
 
-  def list_servers(endpoint)
+  def list(endpoint)
     ep = get_endpoint(endpoint)
-    ep.servers.all
+    ep.servers
   end
 
   private
+  def fix_hash(h)
+    res = {}
+    h.each_key do |k|
+      res[k.to_sym] = h[k]
+    end
+    res
+  end
 
   def get_endpoint(ep)
-    @endpoints ||= Hash.new
-    ep_lock.synchronize do
-      return @endpoints[ep] if @endpoints.has_key?(ep)
-      res = Fog::Compute.new(ep)
-      @endpoints[ep] = res
-      return res
-    end
+    Fog::Compute.new(fix_hash(ep))
   end
 end
 
@@ -44,5 +41,7 @@ end
 #                           check: {
 #                             http: "http://localhost:3000"
 #                           })
-server = Jimson::Server.new(API.new, port: 3000, server: 'puma')
+router = Jimson::Router.new
+router.namespace('servers',Servers.new)
+server = Jimson::Server.new(router, port: 3000, server: 'puma')
 server.start
