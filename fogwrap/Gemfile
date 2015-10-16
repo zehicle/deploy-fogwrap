@@ -1,0 +1,8 @@
+# Copyright 2015, RackN
+
+source 'https://rubygems.org'
+
+gem 'puma'
+gem 'jimson'
+gem 'fog'
+gem 'diplomat'
