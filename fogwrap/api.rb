@@ -5,7 +5,6 @@ require 'jimson' # This is a JSONRPC 2.0 service
 require 'puma'
 # We wrap the relevant bits of Fog to get our work done.
 require 'fog'
-# require 'diplomat'
 
 class Servers
   extend Jimson::Handler
@@ -45,13 +44,7 @@ class Servers
   end
 end
 
-# Register with Diplomat
-#Diplomat::Service.register(name: "fogwrap",
-#                           tags: ["system"],
-#                           port: 3000,
-#                           check: {
-#                             http: "http://localhost:3000"
-#                           })
+# Fire it up, boys
 router = Jimson::Router.new
 router.namespace('servers',Servers.new)
 server = Jimson::Server.new(router, port: 3000, server: 'puma')
