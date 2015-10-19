@@ -11,7 +11,7 @@ cat >> /etc/consul.d/fogwrap.json <<EOF
     "name": "fogwrap",
     "tags": [ "system" ],
     "address": "${forwarder%%/*}",
-    "port": 3030
+    "port": 3030,
     "check": {
       "http": "http://localhost:3030",
       "interval": "10s"

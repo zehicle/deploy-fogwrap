@@ -1,6 +1,7 @@
 FROM digitalrebar/base
 MAINTAINER Victor Lowther <victor@rackn.com>
-# COPY entrypoint.d/*.sh /usr/local/entrypoint.d/
+ENTRYPOINT ["/sbin/docker-entrypoint.sh"]
+COPY entrypoint.d/*.sh /usr/local/entrypoint.d/
 COPY fogwrap /opt/fogwrap
 
 RUN /usr/local/go/bin/go get -u github.com/digitalrebar/rebar-api/rebar \
