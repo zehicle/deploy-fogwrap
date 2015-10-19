@@ -20,11 +20,16 @@ cat >> /etc/consul.d/fogwrap.json <<EOF
 }
 EOF
 
-consul reload
+run_forever() (
+    while true; do
+        "$@"
+        sleep 5
+    done
+)
 
-while true; do
-    cd /opt/fogwrap
-    bundle exec ./api.rb
-    echo "Fogwrap API exited, restarting."
-    sleep 5
-done
+consul reload
+cd /opt/fogwrap
+
+run_forever bundle exec ./api.rb &
+run_forever bundle exec ./waiter.rb &
+run_forever sleep 300

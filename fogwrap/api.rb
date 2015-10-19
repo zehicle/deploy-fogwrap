@@ -5,13 +5,20 @@ require 'jimson' # This is a JSONRPC 2.0 service
 require 'puma'
 # We wrap the relevant bits of Fog to get our work done.
 require 'fog'
+require 'diplomat'
 
 class Servers
   extend Jimson::Handler
 
   def create(endpoint, args)
     ep = get_endpoint(endpoint)
-    ep.servers.create(fix_hash(args))
+    fixed_args = fix_hash(args)
+    fixed_args[:private_key_path] = File.expand_path("~/.ssh/fog_rsa")
+    fixed_args[:public_key_path] = File.expand_path("~/.ssh/fog_rsa.pub")
+    fixed_args[:user] = "root"
+    server = ep.servers.create(fixed_args)
+    Diplomat::Kv.put("fogwrap/create/#{endpoint["provider"]}/#{server.id}",endpoint.to_json)
+    server
   end
 
   def list(endpoint)
