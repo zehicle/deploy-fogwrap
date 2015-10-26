@@ -14,11 +14,28 @@ class Servers
     log("Creating node #{node_id}")
     ep = get_endpoint(endpoint)
     fixed_args = fix_hash(args)
-    fixed_args[:private_key_path] = File.expand_path("~/.ssh/fog_rsa")
-    fixed_args[:public_key_path] = File.expand_path("~/.ssh/fog_rsa.pub")
-    fixed_args[:user] = "root"
+    case endpoint["provider"]
+    when 'AWS'
+      kp_name = "fogwrap-node-key-#{node_id}"
+      node_kp = ep.key_pairs.new(name: kp_name)
+      if node_kp.private_key.nil? || node_kp.private_key.empty?
+        log("Failed to create keypair for #{node.id}")
+        raise "Failed to create keypair for #{node.id}"
+      end
+      File.open(
+        File.expand_path("~/.ssh/#{kp_name}.pem"),
+        File::CREAT|File::TRUNC|File::RDWR,
+        0600) do |f|
+        f.puts(node_kp.private_key.strip)
+      end
+      fixed_args[:key_name]=kp_name
+      fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
+    else
+      raise "No idea how to handle #{endpoint["provider"]}"
+    end
     server = ep.servers.create(fixed_args)
     log("Created server #{server.to_json}")
+    system("ssh-add ~/.ssh/#{kp_name}.pem")
     Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
     server
   end
@@ -42,25 +59,15 @@ class Servers
     log("Deleting server #{id}")
     ep = get_endpoint(endpoint)
     server = ep.servers.get(id)
+    ep.delete_key_pair(server.tags.get('rebar:kp-name'))
     server.destroy
   end
 
   def register(endpoint, user, keys)
     log("Registering endpoint #{endpoint} using #{keys}")
     ep = get_endpoint(endpoint)
-    keys["fogwrap"] = File.read(File.expand_path("~/.ssh/fog_rsa.pub")).strip
     case endpoint["provider"]
     when "AWS"
-      keys.each do |k,v|
-        next if ep.key_pairs.get(k)
-        log "Registering key #{k}: #{v}"
-        res = ep.import_key_pair(k,v)
-        if res.body['keyFingerprint'] && !res.body['keyFingerprint'].empty?
-          log "Key #{k} registered as #{res.body['keyFingerprint']}"
-        else
-          log "Registration of #{k} failed"
-        end
-      end
       sg = ep.security_groups.get('default')
       # make sure port 22 is open in the first security group
       unless sg.ip_permissions.find do |ip_permission|
