@@ -16,12 +16,16 @@ class Servers
     fixed_args = fix_hash(args)
     case endpoint["provider"]
     when 'AWS'
+      log("Creating unique key pair for #{node_id}")
       kp_name = "fogwrap-node-key-#{node_id}"
-      node_kp = ep.key_pairs.new(name: kp_name)
+      kp = ep.key_pairs.get(kp_name)
+      kp.destroy if kp
+      node_kp = ep.key_pairs.create(name: kp_name)
       if node_kp.private_key.nil? || node_kp.private_key.empty?
         log("Failed to create keypair for #{node.id}")
         raise "Failed to create keypair for #{node.id}"
       end
+      log("Saving #{kp_name} to disk")
       File.open(
         File.expand_path("~/.ssh/#{kp_name}.pem"),
         File::CREAT|File::TRUNC|File::RDWR,
@@ -91,6 +95,7 @@ class Servers
 
   def log(line)
     STDOUT.puts(line)
+    STDOUT.flush
   end
                 
   def fix_hash(h)

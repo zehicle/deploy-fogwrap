@@ -30,6 +30,6 @@ run_forever() (
 consul reload
 cd /opt/fogwrap
 
-run_forever bundle exec ./api.rb &
-run_forever bundle exec ./waiter.rb &
-run_forever sleep 300
+run_forever bundle exec ./api.rb >api.log &
+run_forever bundle exec ./waiter.rb >waiter.log &
+tail -f api.log waiter.log
