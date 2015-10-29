@@ -2,15 +2,16 @@
 
 forwarder=$(cat /etc/hosts | grep forwarder | awk '{ print $1 }' | sort -u)
 
-ip route del default
-ip route add default via $forwarder
+if [ "$forwarder" != "" ] ; then
+    ip route del default
+    ip route add default via $forwarder
+fi
 
 cat >> /etc/consul.d/fogwrap.json <<EOF
 {
   "service": {
     "name": "fogwrap",
     "tags": [ "system" ],
-    "address": "${forwarder%%/*}",
     "port": 3030,
     "check": {
       "http": "http://localhost:3030",
