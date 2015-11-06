@@ -70,6 +70,10 @@ loop do
       log "Marking server #{server.id} alive"
       Diplomat::Kv.delete(key)
       system("rebar nodes update #{rebar_id} '{\"alive\": true, \"available\": true}'")
+      log("Adding rebar-joined-node to node #{rebar_id}")
+      system("rebar nodes bind #{rebar_id} to rebar-joined-node")
+      log("Committing node #{rebar_id}")
+      system("rebar nodes commit #{rebar_id}")
     end
   rescue Exception => e
     log "Caught error, looping"
