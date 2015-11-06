@@ -85,6 +85,17 @@ class Servers
       else
         log "SSH access already enabled"
       end
+      unless sg.ip_permissions.find do |ip_permission|
+               ip_permission['ipRanges'].find { |ip_range| ip_range['cidrIp'] == '0.0.0.0/0' } &&
+                 ip_permission['fromPort'] == -1 &&
+                 ip_permission['ipProtocol'] == 'icmp'
+             end
+        log "Allowing ICMP access"
+        sg.authorize_port_range(-1..-1, ip_protocol: 'icmp')
+      else
+        log "ICMP access already enabled"
+      end
+               
       
     else
       raise "No idea how to handle #{endpoint["provider"]}"
