@@ -14,32 +14,57 @@ class Servers
     log("Creating node #{node_id}")
     ep = get_endpoint(endpoint)
     fixed_args = fix_hash(args)
+    kp_name = "fogwrap-access-key"
     case endpoint["provider"]
     when 'AWS'
-      log("Creating unique key pair for #{node_id}")
-      kp_name = "fogwrap-node-key-#{node_id}"
-      kp = ep.key_pairs.get(kp_name)
-      kp.destroy if kp
-      node_kp = ep.key_pairs.create(name: kp_name)
-      if node_kp.private_key.nil? || node_kp.private_key.empty?
-        log("Failed to create keypair for #{node.id}")
-        raise "Failed to create keypair for #{node.id}"
-      end
-      log("Saving #{kp_name} to disk")
-      File.open(
-        File.expand_path("~/.ssh/#{kp_name}.pem"),
-        File::CREAT|File::TRUNC|File::RDWR,
-        0600) do |f|
-        f.puts(node_kp.private_key.strip)
+      unless File.exists?(File.expand_path("~/.ssh/#{kp_name}.pem"))
+        # This needs to migrate to Consul at some point to allow for multiple
+        # fogwrap containers, but...
+        log("Creating unique key pair for fogwrap")
+        kp = ep.key_pairs.get(kp_name)
+        kp.destroy if kp
+        node_kp = ep.key_pairs.create(name: kp_name)
+        if node_kp.private_key.nil? || node_kp.private_key.empty?
+          log("Failed to create #{kp_name}")
+          raise "Failed to create #{kp_name}"
+        end
+        log("Saving #{kp_name} to disk")
+        File.open(File.expand_path("~/.ssh/#{kp_name}.pem"),
+                  File::CREAT|File::TRUNC|File::RDWR,
+                  0600) do |f|
+          f.puts(node_kp.private_key.strip)
+          f.flush
+        end
+        system("ssh-add ~/.ssh/#{kp_name}.pem")
       end
       fixed_args[:key_name]=kp_name
       fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
+      # Default to Centos 7 for the AMI.
+      unless fixed_args[:image_id]
+        log("Setting default image to an Ubuntu 14.04 based image")
+        fixed_args[:flavor_id] ||= 't2.micro'
+        fixed_args[:image_id] = case ep.region
+                                when "us-west-1" then "ami-a88de2c8"
+                                when "us-west-2" then "ami-b4a2b5d5"
+                                when "us-east-1" then "ami-bb156ad1"
+                                when "us-gov-west-1" then "ami-d6bbd9f5"
+                                when "eu-west-1" then "ami-cd0fd6be"
+                                when "eu-central-1" then "ami-bdc9dad1"
+                                when "ap-southeast-1" then "ami-9e7dbafd"
+                                when "ap-southeast-2" then "ami-187a247b"
+                                when "ap-northeast-1" then "ami-7386a11d"
+                                when "sa-east-1" then "ami-5040fb3c"
+                                when "cn-north-1" then "ami-4264f87b"
+                                else
+                                  raise "No idea what region #{ep.region} is"
+                                end
+      end
+      log("Region #{ep.region} -> image #{fixed_args[:image_id]}")
     else
       raise "No idea how to handle #{endpoint["provider"]}"
     end
     server = ep.servers.create(fixed_args)
     log("Created server #{server.to_json}")
-    system("ssh-add ~/.ssh/#{kp_name}.pem")
     Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
     server
   end
@@ -95,8 +120,8 @@ class Servers
       else
         log "ICMP access already enabled"
       end
-               
-      
+
+
     else
       raise "No idea how to handle #{endpoint["provider"]}"
     end
@@ -108,7 +133,7 @@ class Servers
     STDOUT.puts(line)
     STDOUT.flush
   end
-                
+
   def fix_hash(h)
     res = {}
     h.each_key do |k|

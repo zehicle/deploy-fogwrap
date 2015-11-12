@@ -25,24 +25,25 @@ loop do
     log "Finding endpoints of servers to check"
     endpoints = {}
     servers = {}
-    response = RestClient.get('http://localhost:8500/v1/kv/fogwrap/create', params: {recurse: true})
+    response = RestClient.get('http://localhost:8500/v1/kv/fogwrap/create', params: {recurse: true}) rescue nil
     JSON.parse(response.body).each do |k|
       ep = fix_hash(JSON.parse(Base64.decode64(k["Value"])))
       endpoints[ep] ||= Fog::Compute.new(ep)
       fog_id = k["Key"].split("/",4)[-1]
       rebar_id = k["Key"].split("/",4)[-2]
       servers[k["Key"]] = [rebar_id, endpoints[ep].servers.get(fog_id)]
-    end if response.code == 200
+    end if response && response.code == 200
     servers.each do |key, val|
       server = val[1]
       rebar_id = val[0]
+      log "Testing server #{server.id}"
       unless server.ready?
         log "Server #{server.id} not ready, skipping"
         next
       end
-      unless %w(ec2-user ubuntu root).find do |user|
+      unless %w(ec2-user ubuntu centos root).find do |user|
                server.username = user
-               server.sshable?
+               server.sshable? rescue false
              end
         log "Server #{server.id} not sshable, skipping"
         next
