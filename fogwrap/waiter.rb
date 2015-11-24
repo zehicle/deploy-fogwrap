@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require 'net/ssh'
+require 'net/scp'
 require 'fog'
 require 'json'
 require 'rest-client'

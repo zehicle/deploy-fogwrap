@@ -88,7 +88,6 @@ class Servers
     log("Deleting server #{id}")
     ep = get_endpoint(endpoint)
     server = ep.servers.get(id)
-    ep.delete_key_pair(server.tags.get('rebar:kp-name'))
     server.destroy
   end
 
