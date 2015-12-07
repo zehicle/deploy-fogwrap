@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 
+require 'net/ssh'
 require 'json'
 require 'jimson' # This is a JSONRPC 2.0 service
 require 'puma'
@@ -14,28 +15,21 @@ class Servers
     log("Creating node #{node_id}")
     ep = get_endpoint(endpoint)
     fixed_args = fix_hash(args)
-    kp_name = "fogwrap-access-key"
+    kp_name = "id-fogwrap-#{node_id}"
+    kp_loc = File.expand_path("~/.ssh/#{kp_name}")
+    if ! system("ssh-keygen -t rsa -b 1024 -N '' -f '#{kp_loc}'")
+      log("Failed to generate new key #{kp_loc}")
+      raise "Failed to generate key"
+    end
+    kp = Net::SSH::KeyFactory.load_private_key(kp_loc)
     case endpoint["provider"]
     when 'AWS'
-      unless File.exists?(File.expand_path("~/.ssh/#{kp_name}.pem"))
-        # This needs to migrate to Consul at some point to allow for multiple
-        # fogwrap containers, but...
-        log("Creating unique key pair for fogwrap")
-        kp = ep.key_pairs.get(kp_name)
-        kp.destroy if kp
-        node_kp = ep.key_pairs.create(name: kp_name)
-        if node_kp.private_key.nil? || node_kp.private_key.empty?
-          log("Failed to create #{kp_name}")
-          raise "Failed to create #{kp_name}"
-        end
-        log("Saving #{kp_name} to disk")
-        File.open(File.expand_path("~/.ssh/#{kp_name}.pem"),
-                  File::CREAT|File::TRUNC|File::RDWR,
-                  0600) do |f|
-          f.puts(node_kp.private_key.strip)
-          f.flush
-        end
-        system("ssh-add ~/.ssh/#{kp_name}.pem")
+      old_kp = ep.key_pairs.get(kp_name)
+      old_kp.destroy if old_kp
+      res = ep.import_key_pair(kp_name,"#{kp.ssh_type} #{[kp.public_key.to_blob].pack('m0')}")
+      if res.status != 200
+        log("Failed to import #{kp_name} to Amazon")
+        raise "Failed to import key"
       end
       fixed_args[:key_name]=kp_name
       fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
@@ -60,6 +54,8 @@ class Servers
                                 end
       end
       log("Region #{ep.region} -> image #{fixed_args[:image_id]}")
+    when 'google'
+      raise "Not functional yet."
     else
       raise "No idea how to handle #{endpoint["provider"]}"
     end

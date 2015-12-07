@@ -33,16 +33,21 @@ loop do
       endpoints[ep] ||= Fog::Compute.new(ep)
       fog_id = k["Key"].split("/",4)[-1]
       rebar_id = k["Key"].split("/",4)[-2]
-      servers[k["Key"]] = [rebar_id, endpoints[ep].servers.get(fog_id)]
+      servers[k["Key"]] = [rebar_id, endpoints[ep].servers.get(fog_id), endpoints[ep]]
     end if response && response.code == 200
     servers.each do |key, val|
       server = val[1]
       rebar_id = val[0]
+      ep = val[2]
+      node_id = server.tags["rebar:node-id"]
+      kp_name = "id-fogwrap-#{node_id}"
+      kp_loc = File.expand_path("~/.ssh/#{kp_name}")
       log "Testing server #{server.id}"
       unless server.ready?
         log "Server #{server.id} not ready, skipping"
         next
       end
+      server.private_key_path = kp_loc
       unless %w(ec2-user ubuntu centos root).find do |user|
                server.username = user
                server.sshable? rescue false
@@ -77,6 +82,9 @@ loop do
       system("rebar nodes bind #{rebar_id} to rebar-joined-node")
       log("Committing node #{rebar_id}")
       system("rebar nodes commit #{rebar_id}")
+      old_kp = ep.key_pairs.get(kp_name)
+      old_kp.destroy if old_kp
+      File::delete(kp_loc, "#{kp_loc}.pub")
     end
   rescue Exception => e
     log "Caught error, looping"
