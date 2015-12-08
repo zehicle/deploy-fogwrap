@@ -48,7 +48,7 @@ loop do
         next
       end
       server.private_key_path = kp_loc
-      unless %w(ec2-user ubuntu centos root).find do |user|
+      unless %w(rebar ec2-user ubuntu centos root).find do |user|
                server.username = user
                server.sshable? rescue false
              end
