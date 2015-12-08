@@ -8,19 +8,7 @@ require 'rest-client'
 require 'diplomat'
 require 'base64'
 require 'tempfile'
-
-def fix_hash(h)
-  res = {}
-  h.each_key do |k|
-    res[k.to_sym] = h[k]
-  end
-  res
-end
-
-def log(line)
-  STDOUT.puts(line)
-  STDOUT.flush
-end
+require './common'
 
 loop do
   begin
@@ -29,8 +17,8 @@ loop do
     servers = {}
     response = RestClient.get('http://localhost:8500/v1/kv/fogwrap/create', params: {recurse: true}) rescue nil
     JSON.parse(response.body).each do |k|
-      ep = fix_hash(JSON.parse(Base64.decode64(k["Value"])))
-      endpoints[ep] ||= Fog::Compute.new(ep)
+      ep = JSON.parse(Base64.decode64(k["Value"]))
+      endpoints[ep] ||= get_endpoint(ep)
       fog_id = k["Key"].split("/",4)[-1]
       rebar_id = k["Key"].split("/",4)[-2]
       servers[k["Key"]] = [rebar_id, endpoints[ep].servers.get(fog_id), endpoints[ep]]
@@ -39,8 +27,7 @@ loop do
       server = val[1]
       rebar_id = val[0]
       ep = val[2]
-      node_id = server.tags["rebar:node-id"]
-      kp_name = "id-fogwrap-#{node_id}"
+      kp_name = "id-fogwrap-#{rebar_id}"
       kp_loc = File.expand_path("~/.ssh/#{kp_name}")
       log "Testing server #{server.id}"
       unless server.ready?
@@ -82,9 +69,11 @@ loop do
       system("rebar nodes bind #{rebar_id} to rebar-joined-node")
       log("Committing node #{rebar_id}")
       system("rebar nodes commit #{rebar_id}")
-      old_kp = ep.key_pairs.get(kp_name)
-      old_kp.destroy if old_kp
-      File::delete(kp_loc, "#{kp_loc}.pub")
+      if ep.respond_to? :key_pairs
+        old_kp = ep.key_pairs.get(kp_name)
+        old_kp.destroy if old_kp
+        File::delete(kp_loc, "#{kp_loc}.pub")
+      end
     end
   rescue Exception => e
     log "Caught error, looping"

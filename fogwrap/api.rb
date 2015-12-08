@@ -7,6 +7,7 @@ require 'puma'
 # We wrap the relevant bits of Fog to get our work done.
 require 'fog'
 require 'diplomat'
+require './common'
 
 class Servers
   extend Jimson::Handler
@@ -54,15 +55,37 @@ class Servers
                                 end
       end
       log("Region #{ep.region} -> image #{fixed_args[:image_id]}")
-    when 'google'
-      raise "Not functional yet."
+    when 'Google'
+      name = "rebar-fogwrap-#{node_id}"
+      zone = fixed_args[:zone_name] || "us-central1-f"
+      if fixed_args[:disks].nil? || fixed_args[:disks].empty?
+        fixed_args[:disks] = [{'autoDelete' => 'true',
+                               'boot' => 'true',
+                               'type' => 'PERSISTENT',
+                               'initializeParams' =>  {
+                                 'sourceImage' => 'projects/ubuntu-os-cloud/global/images/ubuntu-1504-vivid-v20151120'}}]
+      end
+      fixed_args[:username] = 'rebar'
+      fixed_args[:public_key_path] = "#{kp_loc}.pub"
+      fixed_args[:name] = name
+      defaults = {machine_type: 'n1-standard-1',
+                  zone_name: zone}
+      fixed_args = defaults.merge(fixed_args)
     else
+      log("No idea how to handle #{endpoint['provider']}")
       raise "No idea how to handle #{endpoint["provider"]}"
     end
+    log("Will create new srver with #{fixed_args.inspect}")
     server = ep.servers.create(fixed_args)
     log("Created server #{server.to_json}")
-    Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
-    server
+    case endpoint["provider"]
+    when 'AWS'
+      Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
+      {id: server.id}
+    when 'Google'
+      Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.name}",endpoint.to_json)
+      {id: server.name}
+    end
   end
 
   def list(endpoint)
@@ -115,31 +138,12 @@ class Servers
       else
         log "ICMP access already enabled"
       end
-
-
+    when "Google" then true
     else
       raise "No idea how to handle #{endpoint["provider"]}"
     end
   end
 
-  private
-
-  def log(line)
-    STDOUT.puts(line)
-    STDOUT.flush
-  end
-
-  def fix_hash(h)
-    res = {}
-    h.each_key do |k|
-      res[k.to_sym] = h[k]
-    end
-    res
-  end
-
-  def get_endpoint(ep)
-    Fog::Compute.new(fix_hash(ep))
-  end
 end
 
 # Fire it up, boys
