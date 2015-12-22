@@ -14,83 +14,95 @@ class Servers
 
   def create(endpoint, node_id, args)
     log("Creating node #{node_id}")
-    ep = get_endpoint(endpoint)
-    fixed_args = fix_hash(args)
-    kp_name = "id-fogwrap-#{node_id}"
-    kp_loc = File.expand_path("~/.ssh/#{kp_name}")
-    if ! system("ssh-keygen -t rsa -b 1024 -N '' -f '#{kp_loc}'")
-      log("Failed to generate new key #{kp_loc}")
-      raise "Failed to generate key"
-    end
-    kp = Net::SSH::KeyFactory.load_private_key(kp_loc)
-    case endpoint["provider"]
-    when 'AWS'
-      old_kp = ep.key_pairs.get(kp_name)
-      old_kp.destroy if old_kp
-      res = ep.import_key_pair(kp_name,"#{kp.ssh_type} #{[kp.public_key.to_blob].pack('m0')}")
-      if res.status != 200
-        log("Failed to import #{kp_name} to Amazon")
-        raise "Failed to import key"
+    begin
+      ep = get_endpoint(endpoint)
+      fixed_args = fix_hash(args)
+      kp_name = "id-fogwrap-#{node_id}"
+      kp_loc = File.expand_path("~/.ssh/#{kp_name}")
+      if ! system("ssh-keygen -t rsa -b 1024 -N '' -f '#{kp_loc}'")
+        log("Failed to generate new key #{kp_loc}")
+        raise "Failed to generate key"
       end
-      fixed_args[:key_name]=kp_name
-      fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
-      # Default to Centos 7 for the AMI.
-      unless fixed_args[:image_id]
-        log("Setting default image to an Ubuntu 14.04 based image")
-        fixed_args[:flavor_id] ||= 't2.micro'
-        fixed_args[:image_id] = case ep.region
-                                when "us-west-1" then "ami-a88de2c8"
-                                when "us-west-2" then "ami-b4a2b5d5"
-                                when "us-east-1" then "ami-bb156ad1"
-                                when "us-gov-west-1" then "ami-d6bbd9f5"
-                                when "eu-west-1" then "ami-cd0fd6be"
-                                when "eu-central-1" then "ami-bdc9dad1"
-                                when "ap-southeast-1" then "ami-9e7dbafd"
-                                when "ap-southeast-2" then "ami-187a247b"
-                                when "ap-northeast-1" then "ami-7386a11d"
-                                when "sa-east-1" then "ami-5040fb3c"
-                                when "cn-north-1" then "ami-4264f87b"
-                                else
-                                  raise "No idea what region #{ep.region} is"
-                                end
+      kp = Net::SSH::KeyFactory.load_private_key(kp_loc)
+      case endpoint["provider"]
+      when 'AWS'
+        old_kp = ep.key_pairs.get(kp_name)
+        old_kp.destroy if old_kp
+        res = ep.import_key_pair(kp_name,"#{kp.ssh_type} #{[kp.public_key.to_blob].pack('m0')}")
+        if res.status != 200
+          log("Failed to import #{kp_name} to Amazon")
+          raise "Failed to import key"
+        end
+        fixed_args[:key_name]=kp_name
+        fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
+        # Default to Centos 7 for the AMI.
+        unless fixed_args[:image_id]
+          log("Setting default image to an Ubuntu 14.04 based image")
+          fixed_args[:flavor_id] ||= 't2.micro'
+          fixed_args[:image_id] = case ep.region
+                                  when "us-west-1" then "ami-a88de2c8"
+                                  when "us-west-2" then "ami-b4a2b5d5"
+                                  when "us-east-1" then "ami-bb156ad1"
+                                  when "us-gov-west-1" then "ami-d6bbd9f5"
+                                  when "eu-west-1" then "ami-cd0fd6be"
+                                  when "eu-central-1" then "ami-bdc9dad1"
+                                  when "ap-southeast-1" then "ami-9e7dbafd"
+                                  when "ap-southeast-2" then "ami-187a247b"
+                                  when "ap-northeast-1" then "ami-7386a11d"
+                                  when "sa-east-1" then "ami-5040fb3c"
+                                  when "cn-north-1" then "ami-4264f87b"
+                                  else
+                                    raise "No idea what region #{ep.region} is"
+                                  end
+        end
+        log("Region #{ep.region} -> image #{fixed_args[:image_id]}")
+      when 'Google'
+        name = "rebar-fogwrap-#{node_id}"
+        zone = fixed_args[:zone_name] || "us-central1-f"
+        if fixed_args[:disks].nil? || fixed_args[:disks].empty?
+          fixed_args[:disks] = [{'autoDelete' => 'true',
+                                 'boot' => 'true',
+                                 'type' => 'PERSISTENT',
+                                 'initializeParams' =>  {
+                                   'sourceImage' => 'projects/ubuntu-os-cloud/global/images/ubuntu-1504-vivid-v20151120'}}]
+        end
+        fixed_args[:username] = 'rebar'
+        fixed_args[:public_key_path] = "#{kp_loc}.pub"
+        fixed_args[:name] = name
+        defaults = {machine_type: 'n1-standard-1',
+                    zone_name: zone}
+        fixed_args = defaults.merge(fixed_args)
+      else
+        log("No idea how to handle #{endpoint['provider']}")
+        raise "No idea how to handle #{endpoint["provider"]}"
       end
-      log("Region #{ep.region} -> image #{fixed_args[:image_id]}")
-    when 'Google'
-      name = "rebar-fogwrap-#{node_id}"
-      zone = fixed_args[:zone_name] || "us-central1-f"
-      if fixed_args[:disks].nil? || fixed_args[:disks].empty?
-        fixed_args[:disks] = [{'autoDelete' => 'true',
-                               'boot' => 'true',
-                               'type' => 'PERSISTENT',
-                               'initializeParams' =>  {
-                                 'sourceImage' => 'projects/ubuntu-os-cloud/global/images/ubuntu-1504-vivid-v20151120'}}]
+      log("Will create new srver with #{fixed_args.inspect}")
+      server = ep.servers.create(fixed_args)
+      log("Created server #{server.to_json}")
+      case endpoint["provider"]
+      when 'AWS'
+        Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
+        {id: server.id}
+      when 'Google'
+        Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.name}",endpoint.to_json)
+        {id: server.name}
       end
-      fixed_args[:username] = 'rebar'
-      fixed_args[:public_key_path] = "#{kp_loc}.pub"
-      fixed_args[:name] = name
-      defaults = {machine_type: 'n1-standard-1',
-                  zone_name: zone}
-      fixed_args = defaults.merge(fixed_args)
-    else
-      log("No idea how to handle #{endpoint['provider']}")
-      raise "No idea how to handle #{endpoint["provider"]}"
-    end
-    log("Will create new srver with #{fixed_args.inspect}")
-    server = ep.servers.create(fixed_args)
-    log("Created server #{server.to_json}")
-    case endpoint["provider"]
-    when 'AWS'
-      Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.id}",endpoint.to_json)
-      {id: server.id}
-    when 'Google'
-      Diplomat::Kv.put("fogwrap/create/#{node_id}/#{server.name}",endpoint.to_json)
-      {id: server.name}
+    rescue Exception => e
+      log("Exception Create: #{e.inspect}")
+      raise e
     end
   end
 
   def list(endpoint)
-    ep = get_endpoint(endpoint)
-    ep.servers
+    begin
+      log("Listing: #{endpoint}")
+      ep = get_endpoint(endpoint)
+      return [] unless ep
+      ep.servers if ep
+    rescue Exception => e
+      log("Error List: #{e.inspect}")
+      raise e
+    end
   end
 
   def get(endpoint, id)
@@ -104,10 +116,17 @@ class Servers
   end
 
   def delete(endpoint,id)
-    log("Deleting server #{id}")
-    ep = get_endpoint(endpoint)
-    server = ep.servers.get(id)
-    server.destroy
+    begin
+      log("Deleting server #{id}")
+      ep = get_endpoint(endpoint)
+      log("Could not find endpoint for: #{endpoint}") unless ep
+      server = ep.servers.get(id) if ep
+      log("Could not find server for: #{id}") unless server
+      server.destroy if server
+    rescue Exception => e
+      log("Error Delete: #{e.inspect}")
+      raise e
+    end
   end
 
   def register(endpoint, user, keys)
