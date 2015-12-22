@@ -50,7 +50,10 @@ class FakeDriver
      def get(id)
        s = self[id]
        unless s
-         s = Server.new(self, { :tags => { "rebar:node-id" => id } })
+         arr = id.split('-')
+         node_id = arr[0]
+         time = arr[1]
+         s = Server.new(self, { :tags => { "rebar:node-id" => node_id } }, time)
          self[id] = s
        end
        s
@@ -65,13 +68,22 @@ class FakeDriver
      def get_endpoint_address
        @parent.endpoint_data['debug']['host_ip']
      end
+
+     def get_endpoint_boot_delay
+       @parent.endpoint_data['debug']['boot_delay_time']
+     end
+
+     def get_endpoint_ssh_delay
+       @parent.endpoint_data['debug']['ssh_delay_time']
+     end
    end
 
    class Server
-     def initialize(parent, opts)
+     def initialize(parent, opts, time = Time.now.to_i.to_s)
        @parent = parent
        @hostname = opts[:hostname]
-       @nameid = "#{opts[:tags]["rebar:node-id"]}"
+       @nameid = "#{opts[:tags]["rebar:node-id"]}-#{time}"
+       @create_time = time.to_i
      end
 
      def reboot
@@ -92,7 +104,7 @@ class FakeDriver
      end
 
      def ready?
-       true
+       (@create_time + @parent.get_endpoint_boot_delay) < Time.now.to_i
      end
 
      def private_key_path=(s)
@@ -102,7 +114,7 @@ class FakeDriver
      end
 
      def sshable?
-       true
+       (@create_time + @parent.get_endpoint_ssh_delay) < Time.now.to_i
      end
 
      def ssh(command)
