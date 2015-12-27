@@ -11,7 +11,7 @@ cat >> /etc/consul.d/fogwrap.json <<EOF
 {
   "service": {
     "name": "fogwrap",
-    "tags": [ "system" ],
+    "tags": [ "deployment:system" ],
     "port": 3030,
     "check": {
       "http": "http://localhost:3030",
