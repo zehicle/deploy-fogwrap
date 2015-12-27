@@ -65,10 +65,6 @@ loop do
       log "Marking server #{server.id} alive"
       Diplomat::Kv.delete(key)
       system("rebar nodes update #{rebar_id} '{\"alive\": true, \"available\": true}'")
-      log("Adding rebar-joined-node to node #{rebar_id}")
-      system("rebar nodes bind #{rebar_id} to rebar-joined-node")
-      log("Committing node #{rebar_id}")
-      system("rebar nodes commit #{rebar_id}")
       if ep.respond_to? :key_pairs
         old_kp = ep.key_pairs.get(kp_name)
         old_kp.destroy if old_kp
