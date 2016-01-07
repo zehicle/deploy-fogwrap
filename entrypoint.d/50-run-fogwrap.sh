@@ -1,8 +1,5 @@
 #!/bin/bash
-
-forwarder=$(cat /etc/hosts | grep forwarder | awk '{ print $1 }' | sort -u)
-
-if [ "$forwarder" != "" ] ; then
+if [[ $forwarder ]] ; then
     ip route del default
     ip route add default via $forwarder
 fi
