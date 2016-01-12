@@ -34,7 +34,7 @@ class Servers
           raise "Failed to import key"
         end
         fixed_args[:key_name]=kp_name
-        fixed_args[:tags] = {"rebar:node-id" => node_id.to_s}
+        fixed_args[:tags] = {"rebar:node-id" => node_id.to_s, "name" => (fixed_args[:hostname] ? fixed_args[:hostname] : "dr-#{date}")}
         # Default to Centos 7 for the AMI.
         unless fixed_args[:image_id]
           log("Setting default image to an Ubuntu 14.04 based image")
